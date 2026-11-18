@@ -56,8 +56,8 @@ fn render_decision_boundary(model: &MLP, tape: &mut Tape, dataset: &[([f32; 2], 
 
             tape.clear();
             let input: Vec<Var> = [x, y].iter().map(|&v| tape.var(v)).collect();
-            let (preds, _) = model.forward(tape, &input);
-            let score = preds[0].val();
+            let pass = model.forward(tape, &input);
+            let score = pass.out[0].val();
 
             *cell = if score.abs() < 0.15 {
                 '*'
@@ -111,8 +111,8 @@ fn main() {
             tape.clear();
 
             let x: Vec<Var> = inputs.iter().map(|&v| tape.var(v)).collect();
-            let (preds, vars) = model.forward(&tape, &x);
-            let pred = preds[0];
+            let pass = model.forward(&tape, &x);
+            let pred = pass.out[0];
 
             // SVM hinge loss: max(0, 1 - y * pred)
             let loss = (tape.var(1.0) - tape.var(label) * pred).relu();
@@ -123,7 +123,7 @@ fn main() {
             }
 
             let grads = tape.backward(loss);
-            for (acc, v) in grad_acc.iter_mut().zip(vars) {
+            for (acc, v) in grad_acc.iter_mut().zip(pass.params) {
                 *acc += grads[v.id];
             }
         }

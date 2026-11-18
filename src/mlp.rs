@@ -2,6 +2,14 @@ use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 use crate::tape::{Tape, Var};
 
+/// Result of a forward pass, holding output activations and parameter variables
+/// in the same order as `params_mut()`.
+#[derive(Debug)]
+pub struct ForwardPass<'a> {
+    pub out: Vec<Var<'a>>,
+    pub params: Vec<Var<'a>>,
+}
+
 #[derive(Debug)]
 pub struct Linear {
     pub in_features: usize,
@@ -32,7 +40,8 @@ impl Linear {
         }
     }
 
-    pub fn forward<'a>(&self, tape: &'a Tape, x: &[Var<'a>]) -> (Vec<Var<'a>>, Vec<Var<'a>>) {
+    /// Computes `W * x + b` on `tape`. Returns outputs and parameter `Var`s ordered to match `params_mut()`.
+    pub fn forward<'a>(&self, tape: &'a Tape, x: &[Var<'a>]) -> ForwardPass<'a> {
         assert_eq!(
             x.len(),
             self.in_features,
@@ -41,26 +50,27 @@ impl Linear {
             x.len()
         );
         let mut out = Vec::with_capacity(self.b.len());
-        let mut vars = Vec::new();
+        let mut params = Vec::new();
 
         for (w_row, &b_val) in self.w.iter().zip(&self.b) {
             let b_var = tape.var(b_val);
-            vars.push(b_var);
+            params.push(b_var);
 
             let mut acc = b_var;
 
             for (&w_val, &x_var) in w_row.iter().zip(x) {
                 let w_var = tape.var(w_val);
-                vars.push(w_var);
+                params.push(w_var);
                 acc = acc + w_var * x_var;
             }
 
             out.push(acc);
         }
 
-        (out, vars)
+        ForwardPass { out, params }
     }
 
+    /// Yields mutable references to biases and weights in the same order as `ForwardPass::params`.
     pub fn params_mut(&mut self) -> impl Iterator<Item = &mut f32> {
         self.b
             .iter_mut()
@@ -93,22 +103,26 @@ impl MLP {
         Self { layers }
     }
 
-    pub fn forward<'a>(&self, tape: &'a Tape, x: &[Var<'a>]) -> (Vec<Var<'a>>, Vec<Var<'a>>) {
+    /// Runs all layers sequentially with ReLU between hidden layers.
+    pub fn forward<'a>(&self, tape: &'a Tape, x: &[Var<'a>]) -> ForwardPass<'a> {
         let mut current = x.to_vec();
-        let mut all_vars = Vec::new();
+        let mut all_params = Vec::new();
 
         for (i, layer) in self.layers.iter().enumerate() {
-            let (next, vars) = layer.forward(tape, &current);
-            all_vars.extend(vars);
+            let pass = layer.forward(tape, &current);
+            all_params.extend(pass.params);
 
             current = if i < self.layers.len() - 1 {
-                next.into_iter().map(|v| v.relu()).collect()
+                pass.out.into_iter().map(|v| v.relu()).collect()
             } else {
-                next
+                pass.out
             }
         }
 
-        (current, all_vars)
+        ForwardPass {
+            out: current,
+            params: all_params,
+        }
     }
 
     pub fn params_mut(&mut self) -> impl Iterator<Item = &mut f32> {

@@ -21,17 +21,17 @@ fn main() {
             tape.clear();
 
             let x: Vec<Var> = inputs.iter().map(|&v| tape.var(v)).collect();
-            let (preds, vars) = model.forward(&tape, &x);
+            let pass = model.forward(&tape, &x);
 
             let mut loss = tape.var(0.0);
-            for (&pred, &t_val) in preds.iter().zip(&targets) {
+            for (&pred, &t_val) in pass.out.iter().zip(&targets) {
                 let diff = pred - tape.var(t_val);
                 loss = loss + diff * diff;
             }
             total_loss += loss.val();
 
             let grads = tape.backward(loss);
-            for (p, v) in model.params_mut().zip(vars) {
+            for (p, v) in model.params_mut().zip(pass.params) {
                 *p -= lr * grads[v.id];
             }
 
@@ -46,12 +46,12 @@ fn main() {
     for &(inputs, targets) in &dataset {
         tape.clear();
         let x: Vec<Var> = inputs.iter().map(|&v| tape.var(v)).collect();
-        let (preds, _) = model.forward(&tape, &x);
+        let pass = model.forward(&tape, &x);
         println!(
             "INPUT: ({:.0}, {:.0}) -> PRED: {:.4} (ANSWER: {:.0})",
             inputs[0],
             inputs[1],
-            preds[0].val(),
+            pass.out[0].val(),
             targets[0],
         )
     }

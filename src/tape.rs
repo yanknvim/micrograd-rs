@@ -10,16 +10,18 @@ pub enum Op {
 }
 
 #[derive(Debug, Clone)]
-pub struct TapeInner {
+struct TapeInner {
     values: Vec<f32>,
     ops: Vec<Op>,
 }
 
+/// Wengert list (tape) recording values and operations for reverse-mode autodiff.
 #[derive(Debug, Clone)]
 pub struct Tape {
     inner: RefCell<TapeInner>,
 }
 
+/// Lightweight handle to a scalar node stored in a `Tape`.
 #[derive(Debug, Clone, Copy)]
 pub struct Var<'a> {
     pub id: usize,
@@ -64,7 +66,7 @@ impl Tape {
 
         grads[root.id] = 1.0;
 
-        for op in inner.ops.iter().rev() {
+        for op in inner.ops[..=root.id].iter().rev() {
             match *op {
                 Op::Var => {},
                 Op::Add { out, lhs, rhs } => {
@@ -101,7 +103,7 @@ impl<'a> Var<'a> {
         let mut inner = self.tape.inner.borrow_mut();
         let id = inner.values.len();
 
-        let val = inner.values[self.id].max(0 as f32);
+        let val = inner.values[self.id].max(0.0);
 
         inner.values.push(val);
         inner.ops.push(Op::ReLU { out: id, value: self.id });
